@@ -6,7 +6,7 @@ export interface StanClientModuleOptions extends StanClientOptions {
 }
 
 export interface StanClientOptionsFactory {
-  createJwtOptions():
+  createStanClientOptions():
     | Promise<StanClientModuleOptions>
     | StanClientModuleOptions;
 }
