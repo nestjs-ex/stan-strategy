@@ -56,7 +56,7 @@ export class StanClientModule {
     return {
       provide: STAN_CLIENT_MODULE_OPTIONS,
       useFactory: async (optionsFactory: StanClientOptionsFactory) =>
-        await optionsFactory.createJwtOptions(),
+        await optionsFactory.createStanClientOptions(),
       inject: [options.useExisting || options.useClass]
     };
   }
