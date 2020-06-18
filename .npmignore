@@ -1,0 +1,15 @@
+# dependencies
+node_modules
+# source
+lib
+index.ts
+# configs
+.commitlintrc.json
+.eslintignore
+.eslintrc.js
+.prettierrc
+.release-it.json
+jest.json
+package-lock.json
+renovate.json
+tsconfig.json
