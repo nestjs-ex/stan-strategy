@@ -27,14 +27,14 @@ async function bootstrap() {
         clusterId: 'example',
         clientId: 'example-server',
         name: 'example-server',
-        subscribe: { // optional
-          durableName: 'durable', // optional
-          maxInFlight: 100, // optional
-          ackWait: 60 * 1000, // optional: in millis
-          startPosition: 0, // optional (0 mean new only)
-          startSequence: 22, // optional
-          startTime: new Date(2016, 7, 8), // optional
-          manualAcks: false // optional
+        subscribe: { // [optional]
+          durableName: 'durable', // [optional] the real name is <durableName>-<channel>
+          maxInFlight: 100, // [optional]
+          ackWait: 60 * 1000, // [optional] in millis
+          startPosition: 0, // [optional] (0 mean new only)
+          startSequence: 22, // [optional]
+          startTime: new Date(2016, 7, 8), // [optional]
+          manualAcks: false // [optional]
         }
       })
     },
