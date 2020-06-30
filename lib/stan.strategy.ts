@@ -67,7 +67,31 @@ export class StanStrategy extends Server implements CustomTransportStrategy {
     registeredPatterns.forEach((channel) => {
       const { isEventHandler } = this.messageHandlers.get(channel);
       const subOpts = client.subscriptionOptions();
-      subOpts.setDurableName('durable-' + channel);
+
+      if (!isUndefined(this.options.subscribe)) {
+        const userSubOpts = this.options.subscribe;
+
+        if (!isUndefined(userSubOpts.durableName))
+          subOpts.setDurableName(userSubOpts.durableName); // 'durable-' + channel
+
+        if (!isUndefined(userSubOpts.maxInFlight))
+          subOpts.setMaxInFlight(userSubOpts.maxInFlight);
+
+        if (!isUndefined(userSubOpts.ackWait))
+          subOpts.setAckWait(userSubOpts.ackWait);
+
+        if (!isUndefined(userSubOpts.startPosition))
+          subOpts.setStartAt(userSubOpts.startPosition);
+
+        if (!isUndefined(userSubOpts.startSequence))
+          subOpts.setStartAtSequence(userSubOpts.startSequence);
+
+        if (!isUndefined(userSubOpts.startTime))
+          subOpts.setStartTime(userSubOpts.startTime);
+
+        if (!isUndefined(userSubOpts.manualAcks))
+          subOpts.setManualAckMode(userSubOpts.manualAcks);
+      }
 
       const sub = subscribe(
         isEventHandler ? channel : this.getRequestPattern(channel),
