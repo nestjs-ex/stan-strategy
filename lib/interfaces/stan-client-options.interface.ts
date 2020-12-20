@@ -6,6 +6,7 @@ export interface StanClientOptions extends StanOptions {
   group: string;
   subscribe?: {
     durableName?: string;
+    deliverAllAvailable?: boolean;
     maxInFlight?: number;
     ackWait?: number;
     startPosition?: number;
