@@ -74,6 +74,12 @@ export class StanStrategy extends Server implements CustomTransportStrategy {
         if (!isUndefined(userSubOpts.durableName))
           subOpts.setDurableName(userSubOpts.durableName + '-' + channel); // 'durable-' + channel
 
+        if (
+          !isUndefined(userSubOpts.deliverAllAvailable) &&
+          userSubOpts.deliverAllAvailable
+        )
+          subOpts.setDeliverAllAvailable();
+
         if (!isUndefined(userSubOpts.maxInFlight))
           subOpts.setMaxInFlight(userSubOpts.maxInFlight);
 
