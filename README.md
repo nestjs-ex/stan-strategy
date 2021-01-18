@@ -29,6 +29,7 @@ async function bootstrap() {
         name: 'example-server',
         subscribe: { // [optional]
           durableName: 'durable', // [optional] the real name is <durableName>-<channel>
+          deliverAllAvailable: false, // [optional]
           maxInFlight: 100, // [optional]
           ackWait: 60 * 1000, // [optional] in millis
           startPosition: 0, // [optional] (0 mean new only)
