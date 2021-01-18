@@ -1,6 +1,6 @@
 {
   "name": "@nestjs-ex/stan-strategy",
-  "version": "7.1.0",
+  "version": "7.1.1",
   "description": "NATS streaming server strategy and client for nestjs microservice based on the stan.js package",
   "author": "pnthanh",
   "license": "MIT",
