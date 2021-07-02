@@ -26,7 +26,7 @@
   },
   "dependencies": {
     "nanoid": "3.1.23",
-    "nats": "2.0.8",
+    "nats": "2.1.0",
     "node-nats-streaming": "0.3.2"
   },
   "devDependencies": {
