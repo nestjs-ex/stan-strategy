@@ -25,7 +25,7 @@
     "node-nats-streaming": "^0.3.2"
   },
   "dependencies": {
-    "nanoid": "3.1.24",
+    "nanoid": "3.1.25",
     "nats": "2.1.0",
     "node-nats-streaming": "0.3.2"
   },
