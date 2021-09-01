@@ -21,12 +21,12 @@
   "peerDependencies": {
     "@nestjs/common": "^6.0.0 || ^7.0.0 || ^8.0.0",
     "@nestjs/microservices": "^6.0.0 || ^7.0.0 || ^8.0.0",
-    "nats": "^1.4.12",
+    "nats": "^1.4.12 || ^2.2.0",
     "node-nats-streaming": "^0.3.2"
   },
   "dependencies": {
     "nanoid": "3.1.25",
-    "nats": "1.4.12",
+    "nats": "2.2.0",
     "node-nats-streaming": "0.3.2"
   },
   "devDependencies": {
