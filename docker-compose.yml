@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   stan:
-    image: nats-streaming:latest
+    image: nats-streaming:alpine
     command: -cid test-cluster
     ports:
       - 8222:8222
