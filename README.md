@@ -10,6 +10,8 @@ $ npm i --save @nestjs-ex/stan-strategy
 
 ## Usage
 
+### Server
+
 To use the STAN transporter, pass the following options object to the `createMicroservice()` method:
 
 ```typescript
@@ -23,12 +25,12 @@ async function bootstrap() {
     {
       strategy: new StanStrategy({
         url: 'nats://localhost:4222',
-        group: 'example-group',
+        group: 'example-group', // [DEPRECATED] Please use decorator @StanMessagePattern or @StanEventPattern
         clusterId: 'example',
         clientId: 'example-server',
         name: 'example-server',
-        subscribe: { // [optional]
-          durableName: 'durable', // [optional] the real name is <durableName>-<channel>
+        subscribe: { // [DEPRECATED][optional] Please use `defaultSubscriptionOptions`
+          durableName: 'durable', // [optional] the real name is <durableName>-<subject>
           deliverAllAvailable: false, // [optional]
           maxInFlight: 100, // [optional]
           ackWait: 60 * 1000, // [optional] in millis
@@ -36,13 +38,87 @@ async function bootstrap() {
           startSequence: 22, // [optional]
           startTime: new Date(2016, 7, 8), // [optional]
           manualAcks: false // [optional]
-        }
+        },
+        defaultSubscriptionOptions: { // [optional] the same as subscribe
+          durableName: 'durable', // [optional] the real name is <durableName>-<subject>
+          deliverAllAvailable: false, // [optional]
+          maxInFlight: 100, // [optional]
+          ackWait: 60 * 1000, // [optional] in millis
+          startPosition: 0, // [optional] (0 mean new only)
+          startSequence: 22, // [optional]
+          startTime: new Date(2016, 7, 8), // [optional]
+          manualAcks: false // [optional]
+        },
+        serializer: Serializer,
+        deserializer: Deserializer
       })
     },
   );
   app.listen(() => console.log('Microservice is listening'));
 }
 bootstrap();
+```
+
+#### Request-response
+
+```typescript
+import { Controller } from '@nestjs/common';
+import { MessagePattern } from '@nestjs/microservices';
+import { StanMessagePattern } from '@nestjs-ex/stan-strategy';
+
+@Controller()
+export class MathController {
+  @MessagePattern('math.sum')
+  accumulate(data: number[]): number {
+    return (data || []).reduce((a, b) => a + b);
+  }
+
+  @MessagePattern({
+    subject: 'math.sum',
+    qGroup: 'math-group',
+    opts: { // See `defaultSubscriptionOptions`
+      durableName: 'durable',
+    }
+  })
+  accumulate(data: number[]): number {
+    return (data || []).reduce((a, b) => a + b);
+  }
+
+  @StanMessagePattern('math.sum', { durableName: 'durable' })
+  accumulate(data: number[]): number {
+    return (data || []).reduce((a, b) => a + b);
+  }
+
+  @StanMessagePattern('math.sum', 'math-group', { durableName: 'durable' })
+  accumulate(data: number[]): number {
+    return (data || []).reduce((a, b) => a + b);
+  }
+}
+```
+
+#### Event-based
+
+```typescript
+@EventPattern('user.user_created')
+async handleUserCreated(data: Record<string, unknown>) {
+  // business logic
+}
+
+@EventPattern({
+  subject: 'user.user_created',
+  qGroup: 'user-group',
+  opts: {
+    manualAcks: false
+  }
+})
+async handleUserCreated(data: Record<string, unknown>) {
+  // business logic
+}
+
+@StanEventPattern('user.user_created', 'user-group', { manualAcks: false })
+async handleUserCreated(data: Record<string, unknown>) {
+  // business logic
+}
 ```
 
 ### Client
@@ -54,7 +130,6 @@ To create a client instance with the `StanClientModule`, import it and use the `
   imports: [
     StanClientModule.register({
       url: 'nats://localhost:4222',
-      group: 'example-group',
       clusterId: 'example',
       clientId: 'example-client',
       name: 'example-client'
@@ -80,7 +155,6 @@ Quite often you might want to asynchronously pass your module options instead of
 StanClientModule.registerAsync({
   useFactory: () => ({
     url: 'nats://localhost:4222',
-    group: 'example-group',
     clusterId: 'example',
     clientId: 'example-client',
     name: 'example-client'
@@ -95,7 +169,6 @@ StanClientModule.registerAsync({
   imports: [ConfigModule],
   useFactory: async (configService: ConfigService) => ({
     url: configService.getString('STAN_URL'),
-    group: configService.getString('STAN_GROUP'),
     clusterId: configService.getString('STAN_CLUSER_ID'),
     clientId: configService.getString('STAN_CLIENT_ID'),
     name: configService.getString('STAN_NAME')
@@ -119,7 +192,6 @@ class StanClientConfigService implements StanClientOptionsFactory {
   createStanClientOptions(): StanClientModuleOptions {
     return {
       url: 'nats://localhost:4222',
-      group: 'example-group',
       clusterId: 'example',
       clientId: 'example-client',
       name: 'example-client'
@@ -138,6 +210,29 @@ StanClientModule.registerAsync({
 ```
 
 It works the same as `useClass` with one critical difference - `StanClientModule` will lookup imported modules to reuse already created `ConfigService`, instead of instantiating it on its own.
+
+#### Sending messages
+
+```typescript
+accumulate(): Observable<number> {
+  const payload = [1, 2, 3];
+  return this.client.send<number>('math.sum', payload);
+}
+```
+
+or
+
+```typescript
+accumulate(): Observable<number> {
+  const pattern = { subject: 'math.sum', qGroup: 'math-group' };
+  const payload = [1, 2, 3];
+  return this.client.send<number>(pattern, payload);
+}
+```
+
+## Notes
+
+The package's major version is following NestJS. The package version is 8.x.y will correspond to NestJs 8.a.b.
 
 ## Stay in touch
 

@@ -1,9 +1,9 @@
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import {
-  StanClientModuleOptions,
   StanClientModuleAsyncOptions,
+  StanClientModuleOptions,
   StanClientOptionsFactory
-} from './interfaces';
+} from './interfaces/stan-client-module-options.interface';
 import { STAN_CLIENT_MODULE_OPTIONS } from './stan-client.constants';
 import { createStanClientProvider } from './stan-client.providers';
 import { StanClient } from './stan-client.service';

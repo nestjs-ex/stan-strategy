@@ -1,51 +1,52 @@
+import { isObject, isString, isUndefined } from '@nestjs/common/utils/shared.utils';
 import {
   Server,
   CustomTransportStrategy,
   IncomingRequest,
-  ReadPacket,
-  PacketId
+  MessageHandler
 } from '@nestjs/microservices';
 import {
   CONNECT_EVENT,
-  MESSAGE_EVENT,
   ERROR_EVENT,
+  MESSAGE_EVENT,
   NO_MESSAGE_HANDLER
 } from '@nestjs/microservices/constants';
-import { isUndefined } from '@nestjs/common/utils/shared.utils';
 import { nanoid } from 'nanoid';
+import * as stanPackage from 'node-nats-streaming';
 import { Observable } from 'rxjs';
-import * as stan from 'node-nats-streaming';
-
-import { StanClientOptions } from './interfaces';
+import { StanClientOptions } from './interfaces/stan-client-options.interface';
+import { StanPattern } from './interfaces/stan-pattern.interface';
+import { StanSubscriptionOptions } from './interfaces/stan-subscription-options.interface';
 import { STAN_DEFAULT_URL } from './stan-client.constants';
+import { StanRecordSerializer } from './stan-record.serializer';
+import { StanRequestDeserializer } from './stan-request.deserializer';
 import { StanContext } from './stan.context';
+import { StanRecord } from './stan.record-builder';
 
-// Strategy region
 export class StanStrategy extends Server implements CustomTransportStrategy {
-  private readonly url: string;
-  private stanClient: stan.Stan;
+  protected readonly patternMap = new Map<string, string | StanPattern>();
+  private _subscriptions: stanPackage.Subscription[] = [];
+  private stanClient: stanPackage.Stan;
 
   constructor(private readonly options: StanClientOptions) {
     super();
-    this.url = this.getOptionsProp(this.options, 'url') || STAN_DEFAULT_URL;
 
     this.initializeSerializer(options);
     this.initializeDeserializer(options);
   }
 
-  // CustomTransportStrategy methods
-  listen(callback: () => void): any {
-    this.stanClient = this.createStanClient();
-    this.handleError(this.stanClient);
-    this.start(callback);
+  public async listen(
+    callback: (err?: unknown, ...optionalParams: unknown[]) => void,
+  ) {
+    try {
+      this.stanClient = this.createStanClient();
+      this.handleError(this.stanClient);
+      this.start(callback);
+    } catch (err) {
+      callback(err);
+    }
   }
 
-  close(): any {
-    this.stanClient && this.stanClient.close();
-    this.stanClient = null;
-  }
-
-  // Internal methods
   public start(callback?: () => void) {
     this.stanClient.on(CONNECT_EVENT, () => {
       this.bindEvents(this.stanClient);
@@ -53,153 +54,196 @@ export class StanStrategy extends Server implements CustomTransportStrategy {
     });
   }
 
-  public bindEvents(client: stan.Stan) {
-    const that = this;
-    const group = this.getOptionsProp(this.options, 'group');
-
-    const subscribe = group
-      ? (channel: string, opts: stan.SubscriptionOptions) =>
-          client.subscribe(channel, group, opts)
-      : (channel: string, opts: stan.SubscriptionOptions) =>
-          client.subscribe(channel, opts);
+  public bindEvents(client: stanPackage.Stan) {
+    // const that = this;
+    const subscribe = (subject: string, qGroup: string, opts: stanPackage.SubscriptionOptions) =>
+      qGroup ? client.subscribe(subject, qGroup, opts) : client.subscribe(subject, opts);
 
     const registeredPatterns = [...this.messageHandlers.keys()];
-    registeredPatterns.forEach((channel) => {
-      const { isEventHandler } = this.messageHandlers.get(channel);
+    registeredPatterns.forEach((normalizedPattern) => {
+      const pattern = this.patternMap.get(normalizedPattern);
+      const { subject, qGroup, opts: patternSubOpts } = this.parsePattern(pattern);
+
+      if (isUndefined(subject)) {
+        return; // skip this pattern
+      }
+
       const subOpts = client.subscriptionOptions();
 
-      if (!isUndefined(this.options.subscribe)) {
-        const userSubOpts = this.options.subscribe;
-
-        if (!isUndefined(userSubOpts.durableName))
-          subOpts.setDurableName(userSubOpts.durableName + '-' + channel); // 'durable-' + channel
+      if (!isUndefined(patternSubOpts)) {
+        if (!isUndefined(patternSubOpts.durableName))
+          subOpts.setDurableName(patternSubOpts.durableName + '-' + subject); // 'durable-' + subject
 
         if (
-          !isUndefined(userSubOpts.deliverAllAvailable) &&
-          userSubOpts.deliverAllAvailable
+          !isUndefined(patternSubOpts.deliverAllAvailable) &&
+          patternSubOpts.deliverAllAvailable
         )
           subOpts.setDeliverAllAvailable();
 
-        if (!isUndefined(userSubOpts.maxInFlight))
-          subOpts.setMaxInFlight(userSubOpts.maxInFlight);
+        if (!isUndefined(patternSubOpts.maxInFlight))
+          subOpts.setMaxInFlight(patternSubOpts.maxInFlight);
 
-        if (!isUndefined(userSubOpts.ackWait))
-          subOpts.setAckWait(userSubOpts.ackWait);
+        if (!isUndefined(patternSubOpts.ackWait))
+          subOpts.setAckWait(patternSubOpts.ackWait);
 
-        if (!isUndefined(userSubOpts.startPosition))
-          subOpts.setStartAt(userSubOpts.startPosition);
+        if (!isUndefined(patternSubOpts.startPosition))
+          subOpts.setStartAt(patternSubOpts.startPosition);
 
-        if (!isUndefined(userSubOpts.startSequence))
-          subOpts.setStartAtSequence(userSubOpts.startSequence);
+        if (!isUndefined(patternSubOpts.startSequence))
+          subOpts.setStartAtSequence(patternSubOpts.startSequence);
 
-        if (!isUndefined(userSubOpts.startTime))
-          subOpts.setStartTime(userSubOpts.startTime);
+        if (!isUndefined(patternSubOpts.startTime))
+          subOpts.setStartTime(patternSubOpts.startTime);
 
-        if (!isUndefined(userSubOpts.manualAcks))
-          subOpts.setManualAckMode(userSubOpts.manualAcks);
+        if (!isUndefined(patternSubOpts.manualAcks))
+          subOpts.setManualAckMode(patternSubOpts.manualAcks);
       }
 
-      const sub = subscribe(
-        isEventHandler ? channel : this.getRequestPattern(channel),
-        subOpts
-      );
+      const sub = subscribe(subject, qGroup, subOpts);
+
       sub.on('ready', () => {
         // avoid "NATS: Subject must be supplied" error
-        console.log('subscription ready');
+        this.logger.debug('subscription ready');
         sub.on(
           MESSAGE_EVENT,
-          this.getMessageHandler(channel, client).bind(this)
+          this.getMessageHandler(normalizedPattern, client).bind(this)
         );
       });
-      sub.on('error', (err) => console.log('subscription error: ', err));
-      sub.on('timeout', (err) => console.log('subscription timeout: ', err));
-      sub.on('unsubscribed', () => console.log('subscription unsubscribed'));
-      sub.on('closed', () => console.log('subscription closed'));
+      sub.on('error', (err) => this.logger.error('subscription error: ' + err.message));
+      sub.on('timeout', (err) => this.logger.error('subscription timeout: ' + err.message));
+      sub.on('unsubscribed', () => this.logger.debug('subscription unsubscribed'));
+      sub.on('closed', () => this.logger.debug('subscription closed'));
+      this._subscriptions.push(sub);
     });
   }
 
-  public createStanClient(): stan.Stan {
+  public async close() {
+    this._subscriptions.forEach((sub) => sub.unsubscribe());
+    this.stanClient?.close();
+    this._subscriptions = [];
+    this.stanClient = null;
+  }
+
+  public createStanClient(): stanPackage.Stan {
     const options = this.options || ({} as StanClientOptions);
-    return stan.connect(
+    return stanPackage.connect(
       options.clusterId,
       `${options.clientId}-${nanoid(10)}`,
       {
+        url: STAN_DEFAULT_URL,
         ...options,
-        url: this.url
       }
     );
   }
 
-  public getMessageHandler(channel: string, client: stan.Stan): Function {
-    return async (msg: stan.Message) =>
-      this.handleMessage(channel, msg, client);
+  public addHandler(
+    pattern: any,
+    callback: MessageHandler,
+    isEventHandler = false,
+  ) {
+    const normalizedPattern = this.normalizePattern(pattern);
+    callback.isEventHandler = isEventHandler;
+
+    if (this.messageHandlers.has(normalizedPattern) && isEventHandler) {
+      const headRef = this.messageHandlers.get(normalizedPattern);
+      const getTail = (handler: MessageHandler) =>
+        handler?.next ? getTail(handler.next) : handler;
+
+      const tailRef = getTail(headRef);
+      tailRef.next = callback;
+    } else {
+      this.messageHandlers.set(normalizedPattern, callback);
+      this.patternMap.set(normalizedPattern, pattern);
+    }
   }
 
-  public async handleMessage(
-    channel: string,
-    message: stan.Message,
-    client: stan.Stan
-  ) {
-    const rawPacket = this.parseMessage(message.getData() as string);
-    const packet = this.deserializer.deserialize(rawPacket, { channel });
-    const stanCtx = new StanContext([message]);
+  public getMessageHandler(pattern: string, pub: stanPackage.Stan): Function {
+    return async (msg: stanPackage.Message) =>
+      this.handleMessage(pattern, msg, pub);
+  }
 
-    if (isUndefined((packet as IncomingRequest).id)) {
-      return this.handleEvent(channel, packet, stanCtx);
+  public async handleMessage(pattern: string, stanMsg: stanPackage.Message, pub: stanPackage.Stan) {
+    const rawMessage = stanMsg.getData();
+    const stanCtx = new StanContext([stanMsg]);
+    const message = await this.deserializer.deserialize(rawMessage, { channel: pattern });
+
+    if (isUndefined((message as IncomingRequest).id)) {
+      return this.handleEvent(pattern, message, stanCtx);
     }
 
     const publish = this.getPublisher(
-      client,
-      channel,
-      (packet as IncomingRequest).id
+      pub,
+      pattern,
+      (message as IncomingRequest).id
     );
-    const handler = this.getHandlerByPattern(channel);
+    const handler = this.getHandlerByPattern(pattern);
 
     if (!handler) {
       const status = 'error';
       const noHandlerPacket = {
-        id: (packet as IncomingRequest).id,
+        id: (message as IncomingRequest).id,
         status,
         err: NO_MESSAGE_HANDLER
       };
       return publish(noHandlerPacket);
     }
     const response$ = this.transformToObservable(
-      await handler(packet.data, stanCtx)
+      await handler(message.data, stanCtx)
     ) as Observable<any>;
     response$ && this.send(response$, publish);
   }
 
-  public getPublisher(publisher: stan.Stan, pattern: string, id: string) {
+  public getPublisher(pub: stanPackage.Stan, pattern: string, id: string) {
     return (response: any) => {
       Object.assign(response, { id });
-      const outgoingResponse = this.serializer.serialize(response);
-      return publisher.publish(
+      const outgoingResponse: StanRecord = this.serializer.serialize(response);
+
+      return pub.publish(
         this.getReplyPattern(pattern),
-        JSON.stringify(outgoingResponse)
+        outgoingResponse.data
       );
     };
   }
 
-  public parseMessage(content: string): ReadPacket & PacketId {
-    try {
-      return JSON.parse(content);
-    } catch (e) {
-      return content as any;
-    }
-  }
-
-  public getRequestPattern(pattern: string): string {
-    return pattern;
-  }
-
-  public getReplyPattern(pattern: string): string {
-    return `${pattern}.reply`;
+  public getReplyPattern(normalizedPattern: string): string {
+    const pattern = this.patternMap.get(normalizedPattern);
+    const { subject } = this.parsePattern(pattern);
+    return `${subject}.reply`;
   }
 
   public handleError(stream: any) {
     stream.on(ERROR_EVENT, (err: any) => {
       this.logger.error(err);
     });
+  }
+
+  protected initializeSerializer(options: StanClientOptions) {
+    this.serializer = options?.serializer ?? new StanRecordSerializer();
+  }
+
+  protected initializeDeserializer(options: StanClientOptions) {
+    this.deserializer =
+      options?.deserializer ?? new StanRequestDeserializer();
+  }
+
+  private parsePattern(pattern: any) {
+    let subject: string;
+    let qGroup: string;
+    let opts: StanSubscriptionOptions;
+
+    if (isString(pattern)) {
+      subject = pattern;
+      opts = this.options.defaultSubscriptionOptions || this.options.subscribe;
+    } else if (isObject(pattern)) {
+      subject = pattern['subject'];
+      qGroup = pattern['qGroup'];
+      opts = pattern['opts'] || this.options.defaultSubscriptionOptions || this.options.subscribe;
+    }
+
+    return {
+      subject,
+      qGroup,
+      opts
+    };
   }
 }

@@ -1,64 +1,61 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
+import { isObject, isString } from '@nestjs/common/utils/shared.utils';
 import { ClientProxy, ReadPacket, WritePacket } from '@nestjs/microservices';
 import { ERROR_EVENT, MESSAGE_EVENT } from '@nestjs/microservices/constants';
-import { share, tap } from 'rxjs/operators';
-import * as stan from 'node-nats-streaming';
 import { nanoid } from 'nanoid';
-
+import * as stan from 'node-nats-streaming';
+import { StanClientModuleOptions } from './interfaces/stan-client-module-options.interface';
 import {
   STAN_CLIENT_MODULE_OPTIONS,
   STAN_DEFAULT_URL
 } from './stan-client.constants';
-import { StanClientModuleOptions } from './interfaces';
+import { StanRecordSerializer } from './stan-record.serializer';
+import { StanResponseDeserializer } from './stan-response.deserializer';
+import { StanRecord } from './stan.record-builder';
 
 @Injectable()
 export class StanClient extends ClientProxy {
   protected readonly logger = new Logger(StanClient.name);
   protected readonly subscriptionsCount = new Map<string, number>();
   protected readonly subscriptions = new Map<string, stan.Subscription>();
-  protected readonly url: string;
   protected stanClient: stan.Stan;
-  protected connection: Promise<any>;
 
   constructor(
     @Inject(STAN_CLIENT_MODULE_OPTIONS)
     private readonly options: StanClientModuleOptions
   ) {
     super();
-    this.url = this.getOptionsProp(this.options, 'url') || STAN_DEFAULT_URL;
 
     this.initializeSerializer(options);
     this.initializeDeserializer(options);
   }
 
-  // implement method
-  async connect(): Promise<any> {
+  public async close() {
+    this.stanClient?.close();
+    this.stanClient = null;
+  }
+
+  public async connect(): Promise<any> {
     if (this.stanClient) {
-      return this.connection;
+      return this.stanClient;
     }
+
     this.stanClient = this.createClient();
     this.handleError(this.stanClient);
 
-    this.connection = await this.connect$(this.stanClient)
-      .pipe(share())
-      .toPromise();
+    return this.stanClient;
+  }
 
-    return this.connection;
-  }
-  close() {
-    this.stanClient && this.stanClient.close();
-    this.stanClient = null;
-    this.connection = null;
-  }
   protected publish(
-    partialPacket: ReadPacket<any>,
-    callback: (packet: WritePacket<any>) => void
-  ): Function {
+    partialPacket: ReadPacket,
+    callback: (packet: WritePacket) => void,
+  ): () => void {
     try {
       const packet = this.assignPacketId(partialPacket);
-      const channel = this.normalizePattern(partialPacket.pattern);
-      const serializedPacket = this.serializer.serialize(packet);
-      const responseChannel = this.getReplyPattern(channel);
+      // const subject = this.normalizePattern(partialPacket.pattern);
+      const { subject, qGroup } = this.parsePattern(partialPacket.pattern);
+      const serializedPacket: StanRecord = this.serializer.serialize(packet);
+      const responseChannel = this.getReplyPattern(subject);
       let subscription = this.subscriptions.get(responseChannel);
 
       const publishPacket = () => {
@@ -66,23 +63,19 @@ export class StanClient extends ClientProxy {
           this.subscriptionsCount.get(responseChannel) || 0;
         this.subscriptionsCount.set(responseChannel, subscriptionsCount + 1);
         this.routingMap.set(packet.id, callback);
-        this.stanClient.publish(
-          this.getRequestPattern(channel),
-          JSON.stringify(serializedPacket)
-        );
+        this.stanClient.publish(subject, serializedPacket.data);
       };
 
       if (!subscription) {
         const subOpts = this.stanClient.subscriptionOptions();
-        subOpts.setDurableName('durable-' + channel);
+        subOpts.setDurableName('durable-' + subject);
 
-        const sub = this.options.group
-          ? this.stanClient.subscribe(
-              responseChannel,
-              this.options.group,
-              subOpts
-            )
-          : this.stanClient.subscribe(responseChannel, subOpts);
+        const queueGroup = qGroup || this.options.group;
+        const sub = queueGroup ? this.stanClient.subscribe(
+          responseChannel,
+          queueGroup,
+          subOpts
+        ) : this.stanClient.subscribe(responseChannel, subOpts);
 
         sub.on('ready', () => {
           // avoid "NATS: Subject must be supplied" error
@@ -103,36 +96,30 @@ export class StanClient extends ClientProxy {
       callback({ err });
     }
   }
-  protected dispatchEvent<T = any>(packet: ReadPacket<any>): Promise<T> {
-    const pattern = this.normalizePattern(packet.pattern);
-    const serializedPacket = this.serializer.serialize(packet);
+
+  protected dispatchEvent(packet: ReadPacket): Promise<any> {
+    // const pattern = this.normalizePattern(packet.pattern);
+    const { subject } = this.parsePattern(packet.pattern);
+    const serializedPacket: StanRecord = this.serializer.serialize(packet);
 
     return new Promise((resolve, reject) =>
       this.stanClient.publish(
-        pattern,
-        JSON.stringify(serializedPacket),
+        subject, serializedPacket.data,
         (err, guid) => (err ? reject(err) : resolve(guid as any))
       )
     );
   }
 
-  // internal methods
-  public getRequestPattern(pattern: string): string {
-    return pattern;
+  public getReplyPattern(subject: string): string {
+    return `${subject}.reply`;
   }
 
-  public getReplyPattern(pattern: string): string {
-    return `${pattern}.reply`;
-  }
-
-  public createResponseCallback(): (msg: stan.Message) => any {
-    return (msg: stan.Message) => {
+  public createResponseCallback(): (msg: stan.Message) => Promise<void> {
+    return async (msg: stan.Message) => {
       const packet = JSON.parse(msg.getData() as string);
-      const { err, response, isDisposed, id } = this.deserializer.deserialize(
-        packet
-      );
-
+      const { err, response, isDisposed, id } = await this.deserializer.deserialize(packet);
       const callback = this.routingMap.get(id);
+
       if (!callback) {
         return undefined;
       }
@@ -143,6 +130,7 @@ export class StanClient extends ClientProxy {
           isDisposed: true
         });
       }
+
       callback({
         err,
         response
@@ -151,14 +139,13 @@ export class StanClient extends ClientProxy {
   }
 
   public createClient(): stan.Stan {
-    const options: StanClientModuleOptions =
-      this.options || ({} as StanClientModuleOptions);
+    const options: StanClientModuleOptions = this.options || ({} as StanClientModuleOptions);
     return stan.connect(
       options.clusterId,
       `${options.clientId}-${nanoid(10)}`,
       {
+        url: STAN_DEFAULT_URL,
         ...options,
-        url: this.url
       }
     );
   }
@@ -176,5 +163,30 @@ export class StanClient extends ClientProxy {
       this.subscriptions.delete(channel);
       this.subscriptionsCount.delete(channel);
     }
+  }
+
+  protected initializeSerializer(options: StanClientModuleOptions) {
+    this.serializer = options?.serializer ?? new StanRecordSerializer();
+  }
+
+  protected initializeDeserializer(options: StanClientModuleOptions) {
+    this.deserializer = options?.deserializer ?? new StanResponseDeserializer();
+  }
+
+  private parsePattern(pattern: any) {
+    let subject: string;
+    let qGroup: string;
+
+    if (isString(pattern)) {
+      subject = pattern;
+    } else if (isObject(pattern)) {
+      subject = pattern['subject'];
+      qGroup = pattern['qGroup'];
+    }
+
+    return {
+      subject,
+      qGroup
+    };
   }
 }
