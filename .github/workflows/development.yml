@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 env:
@@ -33,8 +33,8 @@ jobs:
 
     services:
       stan:
-        image: nats-streaming:latest
-        options: -cid test-cluster -m 8222
+        image: nats-streaming:alpine
+        options: --entrypoint "/usr/local/bin/nats-streaming-server -cid test-cluster -m 8222"
         ports:
           - 8222:8222
           - 4222:4222
