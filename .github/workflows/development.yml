@@ -34,7 +34,7 @@ jobs:
     services:
       stan:
         image: nats-streaming:latest
-        options: -cid test-cluster -m 8222
+        options: --entrypoint "nats-streaming-server -cid test-cluster -m 8222"
         ports:
           - 8222:8222
           - 4222:4222
