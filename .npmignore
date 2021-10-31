@@ -2,6 +2,7 @@
 node_modules
 # source
 lib
+test-env
 index.ts
 # configs
 .github/
