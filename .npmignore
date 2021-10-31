@@ -4,11 +4,13 @@ node_modules
 lib
 index.ts
 # configs
+.github/
 .commitlintrc.json
 .eslintignore
 .eslintrc.js
 .prettierrc
 .release-it.json
+index.ts
 jest.json
 package-lock.json
 renovate.json
