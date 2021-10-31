@@ -1,1 +1,54 @@
+name: Build
 
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  NODE_VERSION: "14.x"
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Build package
+        run: |
+          npm install
+          npm run build
+
+  test:
+    name: Test stan strategy
+    runs-on: ubuntu-latest
+
+    services:
+      stan:
+        image: nats-streaming:latest
+        options: -cid test-cluster -m 8222
+        ports:
+          - 8222:8222
+          - 4222:4222
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Run tests
+        run: |
+          npm install
+          npm test
