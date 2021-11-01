@@ -10,6 +10,7 @@
     "test": "jest --config=jest.json --detectOpenHandles",
     "test:watch": "jest --config=jest.json --watch",
     "test:coverage": "jest --config=jest.json --coverage --coverageDirectory=coverage",
+    "test:e2e": "jest --config ./e2e/jest-e2e.json",
     "prebuild": "rimraf dist",
     "build": "tsc -p tsconfig.json",
     "precommit": "lint-staged",
