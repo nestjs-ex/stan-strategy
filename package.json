@@ -31,7 +31,7 @@
     "node-nats-streaming": "0.3.2"
   },
   "devDependencies": {
-    "@commitlint/cli": "17.7.1",
+    "@commitlint/cli": "17.7.2",
     "@commitlint/config-angular": "17.7.0",
     "@nestjs/common": "9.4.3",
     "@nestjs/core": "9.4.3",
