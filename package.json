@@ -37,7 +37,7 @@
     "@nestjs/core": "9.4.3",
     "@nestjs/microservices": "9.4.3",
     "@nestjs/testing": "9.4.3",
-    "@types/chai": "4.3.9",
+    "@types/chai": "4.3.10",
     "@types/chai-as-promised": "7.1.7",
     "@types/jest": "29.5.7",
     "@types/node": "20.8.10",
