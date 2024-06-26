@@ -40,7 +40,7 @@
     "@types/chai": "4.3.16",
     "@types/chai-as-promised": "7.1.8",
     "@types/jest": "29.5.12",
-    "@types/node": "20.14.8",
+    "@types/node": "20.14.9",
     "@typescript-eslint/eslint-plugin": "7.14.1",
     "@typescript-eslint/parser": "7.14.1",
     "chai": "4.4.1",
