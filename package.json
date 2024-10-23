@@ -39,7 +39,7 @@
     "@nestjs/testing": "9.4.3",
     "@types/chai": "4.3.20",
     "@types/chai-as-promised": "8.0.1",
-    "@types/jest": "29.5.13",
+    "@types/jest": "29.5.14",
     "@types/node": "20.16.13",
     "@typescript-eslint/eslint-plugin": "8.11.0",
     "@typescript-eslint/parser": "8.11.0",
