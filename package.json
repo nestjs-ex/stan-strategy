@@ -21,7 +21,7 @@
   },
   "peerDependencies": {
     "@nestjs/common": "^6.0.0 || ^7.0.0 || ^8.0.0 || ^9.0.0",
-    "@nestjs/microservices": "^6.0.0 || ^7.0.0 || ^8.0.0 || ^9.0.0",
+    "@nestjs/microservices": "^6.0.0 || ^7.0.0 || ^8.0.0 || ^9.0.0 || ^11.0.0",
     "nats": "^1.4.12",
     "node-nats-streaming": "^0.3.2"
   },
@@ -34,9 +34,9 @@
     "@commitlint/cli": "19.8.1",
     "@commitlint/config-angular": "19.8.1",
     "@nestjs/common": "9.4.3",
-    "@nestjs/core": "9.4.3",
-    "@nestjs/microservices": "9.4.3",
-    "@nestjs/testing": "9.4.3",
+    "@nestjs/core": "11.1.0",
+    "@nestjs/microservices": "11.1.0",
+    "@nestjs/testing": "11.1.0",
     "@types/chai": "4.3.20",
     "@types/chai-as-promised": "8.0.2",
     "@types/jest": "29.5.14",
