@@ -34,7 +34,7 @@
     "@commitlint/cli": "20.5.0",
     "@commitlint/config-angular": "20.5.0",
     "@nestjs/common": "9.4.3",
-    "@nestjs/core": "9.4.3",
+    "@nestjs/core": "11.1.18",
     "@nestjs/microservices": "9.4.3",
     "@nestjs/testing": "9.4.3",
     "@types/chai": "5.2.3",
